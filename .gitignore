@@ -1,0 +1,13 @@
+# Runtime
+.venv/
+__pycache__/
+*.pyc
+
+# Lumen state
+lumen_settings.json
+lumen_history.json
+meet_captions.txt
+context.txt
+
+# Secrets
+.env
