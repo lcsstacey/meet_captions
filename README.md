@@ -37,22 +37,47 @@ run.bat --visible
 
 ## What's in the dashboard
 
-- **Live** — real-time transcript stream, status cards, and a one-click
-  *Analyse with Gemini* button with four output modes.
+- **Live** — real-time transcript stream, status cards, and a quick-action bar:
+  *Answer*, *Shorten*, *Recap*, *Follow-up*, *Define*, plus *Spotlight*. Export
+  the transcript to Markdown anytime.
+- **Context** — paste your resume, the role/JD, and any live notes. Everything
+  here is folded into every Coach prompt.
 - **Insights** — every analysis is archived and rewatchable.
-- **Settings** — overlay position, font size, glass plate, default mode,
-  Gemini model, hotkeys… all autosaved.
+- **Settings** — overlay, Coach panel opacity, auto-answer, hotkeys, default
+  mode, Gemini model… all autosaved.
 - **About** — keyboard shortcuts and version info.
+
+## The Coach panel
+
+A movable, resizable, semi-transparent panel that floats above every window.
+Five quick actions:
+
+| Mode         | What it does                                        |
+| ------------ | --------------------------------------------------- |
+| **Answer**   | 3–5 read-aloud bullets for the question just asked. |
+| **Shorten**  | Tightens up your last reply.                        |
+| **Recap**    | Summary of the conversation so far.                 |
+| **Follow-up**| Sharp next questions to keep the thread alive.      |
+| **Define**   | Defines the most jargon-y term just used.           |
+
+You can also hit the **Spotlight** hotkey to ask anything ad-hoc — it's
+answered against the live transcript and your resume/role context.
+
+If **Auto-answer** is enabled in Settings, Lumen detects when a question is
+asked (heuristic: ends in `?` or starts with *what / why / how / could you*…)
+and fires *Answer* automatically.
 
 ## Default hotkeys
 
-| Action            | Key                |
-| ----------------- | ------------------ |
-| Run analysis      | `0`                |
-| Toggle overlay    | `Ctrl + Shift + O` |
-| Quit Lumen        | `Ctrl + Shift + Q` |
+| Action                  | Key                    |
+| ----------------------- | ---------------------- |
+| Answer the latest thing | `0`                    |
+| Spotlight (ask anything)| `Ctrl + Shift + Space` |
+| Toggle captions overlay | `Ctrl + Shift + O`     |
+| Stealth — hide all      | `Ctrl + Shift + H`     |
+| Quit Lumen              | `Ctrl + Shift + Q`     |
 
-All three are remappable from **Settings**.
+All five are remappable from **Settings**.
 
 ## Caption ingest API
 
@@ -94,16 +119,18 @@ global hotkey registration; the rest of the app works without it.
 
 ```
 app/
-├── main.py              # entry — wires everything together
-├── server.py            # Flask caption endpoint
-├── ai.py                # Gemini integration, multi-mode analysis
-├── overlay.py           # transparent click-through window
-├── overlay_render.py    # glassmorphism HTML templates
-├── dashboard.py         # frameless modern dashboard
+├── main.py              # entry — wires everything + StealthManager
+├── server.py            # Flask caption endpoint + question detection
+├── ai.py                # Gemini integration, all coach/text/HUD modes
+├── overlay.py           # transparent click-through caption layer
+├── overlay_render.py    # glassmorphism caption HTML templates
+├── coach.py             # movable, resizable Coach suggestion panel
+├── spotlight.py         # frameless spotlight quick-prompt
+├── dashboard.py         # frameless modern dashboard (Live/Context/…)
 ├── styles.py            # Qt stylesheet (dark theme)
 ├── tray.py              # system tray menu
 ├── hotkeys.py           # global hotkey registration
-├── config.py            # JSON-backed settings
+├── config.py            # JSON-backed settings (incl. resume/role/notes)
 └── state.py             # cross-thread Qt signal bus
 ```
 

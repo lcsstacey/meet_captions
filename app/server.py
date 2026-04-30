@@ -13,6 +13,27 @@ from .config import TRANSCRIPT_FILE, settings
 from .overlay_render import render_caption_html
 from .state import CaptionEvent, bus, is_analyzing
 
+# Lightweight heuristic for "did someone just ask a question". We avoid
+# triggering on every "?" — only on the first question after a quiet stretch.
+_QUESTION_COOLDOWN_SECONDS = 8
+_last_auto_answer_at: dt.datetime | None = None
+
+
+def _is_question(text: str) -> bool:
+    t = text.strip()
+    if not t:
+        return False
+    if t.endswith("?"):
+        return True
+    lowered = t.lower()
+    return any(
+        lowered.startswith(p)
+        for p in (
+            "what ", "why ", "how ", "when ", "where ", "who ", "which ",
+            "could you", "would you", "can you", "tell me ", "walk me ",
+        )
+    )
+
 log = logging.getLogger("lumen.server")
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
@@ -65,6 +86,19 @@ def save_caption():
             f.write(f"[{timestamp}] [{speaker}] {text}\n")
     except OSError:
         log.exception("Could not write to %s", TRANSCRIPT_FILE)
+
+    # Auto-answer questions if the user enabled it.
+    global _last_auto_answer_at
+    if cfg.auto_answer_questions and _is_question(text) and not is_analyzing():
+        now = dt.datetime.now()
+        if (
+            _last_auto_answer_at is None
+            or (now - _last_auto_answer_at).total_seconds() >= _QUESTION_COOLDOWN_SECONDS
+        ):
+            _last_auto_answer_at = now
+            # Lazy import to keep `server` independent at import time.
+            from .ai import trigger_analysis
+            trigger_analysis("Answer")
 
     return jsonify({"status": "ok"}), 200
 

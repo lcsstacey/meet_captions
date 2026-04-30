@@ -32,8 +32,8 @@ from PyQt6.QtWidgets import (
 )
 
 from . import APP_NAME, APP_TAGLINE, APP_VERSION
-from .ai import has_api_key, load_history, trigger_analysis
-from .config import POSITION_PRESETS, settings
+from .ai import ALL_MODES, has_api_key, load_history, trigger_analysis
+from .config import POSITION_PRESETS, TRANSCRIPT_FILE, settings
 from .state import AnalysisEvent, CaptionEvent, bus
 from .styles import stylesheet
 
@@ -186,16 +186,45 @@ class LivePage(QWidget):
         header_row.addStretch(1)
 
         self.mode_select = QComboBox()
-        self.mode_select.addItems(["HUD", "Summary", "Action items", "Questions"])
+        self.mode_select.addItems(ALL_MODES)
         self.mode_select.setCurrentText(settings().analysis_mode)
         header_row.addWidget(self.mode_select)
 
-        self.analyse_btn = QPushButton("✨ Analyse with Gemini")
+        self.analyse_btn = QPushButton("✨ Run")
         self.analyse_btn.setProperty("class", "Primary")
         self.analyse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.analyse_btn.clicked.connect(self._on_analyse)
         header_row.addWidget(self.analyse_btn)
+
+        self.export_btn = QPushButton("⤓ Export")
+        self.export_btn.setProperty("class", "Ghost")
+        self.export_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.export_btn.clicked.connect(self._on_export)
+        header_row.addWidget(self.export_btn)
         tlay.addLayout(header_row)
+
+        # Quick-action bar — one click to a coach response.
+        actions_row = QHBoxLayout()
+        actions_row.setSpacing(8)
+        for label, mode in [
+            ("✦ Answer", "Answer"),
+            ("∿ Shorten", "Shorten"),
+            ("≡ Recap", "Recap"),
+            ("? Follow-up", "Follow-up"),
+            ("ⓘ Define", "Define"),
+        ]:
+            b = QPushButton(label)
+            b.setProperty("class", "Ghost")
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.clicked.connect(lambda _=False, m=mode: trigger_analysis(m))
+            actions_row.addWidget(b)
+        spot = QPushButton("⌕ Spotlight")
+        spot.setProperty("class", "Ghost")
+        spot.setCursor(Qt.CursorShape.PointingHandCursor)
+        spot.clicked.connect(bus.spotlight_requested.emit)
+        actions_row.addWidget(spot)
+        actions_row.addStretch(1)
+        tlay.addLayout(actions_row)
 
         self.transcript_list = QListWidget()
         self.transcript_list.setSelectionMode(self.transcript_list.SelectionMode.NoSelection)
@@ -275,6 +304,26 @@ class LivePage(QWidget):
         cfg.save()
         trigger_analysis(mode)
 
+    def _on_export(self) -> None:
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export transcript", "transcript.md",
+            "Markdown (*.md);;Text (*.txt);;All Files (*)",
+        )
+        if not path:
+            return
+        try:
+            content = (
+                "# Meeting transcript\n\n"
+                + TRANSCRIPT_FILE.read_text("utf-8")
+                if TRANSCRIPT_FILE.exists() else "# Meeting transcript\n\n(empty)"
+            )
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            bus.status_changed.emit("info", f"Exported to {path}")
+        except OSError as e:
+            bus.status_changed.emit("error", f"Export failed: {e}")
+
 
 class InsightsPage(QWidget):
     """History of analyses, plus the latest result rendered in detail."""
@@ -351,6 +400,95 @@ class InsightsPage(QWidget):
         self.detail_meta.setText(entry.get("timestamp", ""))
         body = entry.get("summary") or "(rendered in the overlay)"
         self.detail_body.setPlainText(body)
+
+
+class ContextPage(QWidget):
+    """Personalised context — resume, role/JD, and free-form notes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        cfg = settings()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(28, 24, 28, 24)
+        outer.setSpacing(14)
+
+        outer.addWidget(labeled("Context", "SectionTitle"))
+        outer.addWidget(labeled(
+            "Anything you put here is included in every Coach prompt — "
+            "your resume, the job description, talking points, anything.",
+            "SectionSubtitle",
+        ))
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        host = QWidget()
+        v = QVBoxLayout(host)
+        v.setContentsMargins(0, 6, 6, 6)
+        v.setSpacing(14)
+
+        self.resume = self._editor(
+            "Resume / profile",
+            "Paste your CV, projects, achievements…",
+            cfg.resume_text,
+            "resume_text",
+            min_h=160,
+        )
+        v.addWidget(self.resume)
+
+        self.role = self._editor(
+            "Role / job description",
+            "What's the role? What does the team value?",
+            cfg.role_text,
+            "role_text",
+            min_h=120,
+        )
+        v.addWidget(self.role)
+
+        self.notes = self._editor(
+            "Live notes",
+            "Anything else Lumen should know right now…",
+            cfg.notes_text,
+            "notes_text",
+            min_h=120,
+        )
+        v.addWidget(self.notes)
+
+        v.addStretch(1)
+        scroll.setWidget(host)
+        outer.addWidget(scroll, 1)
+
+    def _editor(self, title: str, placeholder: str, value: str,
+                attr: str, min_h: int) -> QFrame:
+        f = QFrame()
+        f.setProperty("class", "Card")
+        v = QVBoxLayout(f)
+        v.setContentsMargins(18, 16, 18, 16)
+        v.setSpacing(8)
+        v.addWidget(labeled(title))
+
+        edit = QTextEdit()
+        edit.setPlaceholderText(placeholder)
+        edit.setPlainText(value)
+        edit.setMinimumHeight(min_h)
+
+        # Save 600ms after the user stops typing.
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.setInterval(600)
+
+        def schedule() -> None:
+            timer.start()
+
+        def commit() -> None:
+            cfg = settings()
+            setattr(cfg, attr, edit.toPlainText())
+            cfg.save()
+            bus.settings_changed.emit()
+
+        edit.textChanged.connect(schedule)
+        timer.timeout.connect(commit)
+        v.addWidget(edit)
+        return f
 
 
 class SettingsPage(QWidget):
@@ -434,6 +572,42 @@ class SettingsPage(QWidget):
 
         lay.addWidget(overlay_card)
 
+        # ---- Coach panel card ---- #
+        coach_card = QFrame()
+        coach_card.setProperty("class", "Card")
+        cf = QFormLayout(coach_card)
+        cf.setContentsMargins(20, 20, 20, 20)
+        cf.setVerticalSpacing(12)
+        cf.setHorizontalSpacing(20)
+        cf.addRow(labeled("Coach panel", "SectionTitle"))
+
+        self.cb_coach = QCheckBox("Show floating Coach panel")
+        self.cb_coach.setChecked(cfg.coach_enabled)
+        self.cb_coach.toggled.connect(
+            lambda v: (
+                self._update("coach_enabled", v),
+                bus.coach_visibility_changed.emit(v),
+            )
+        )
+        cf.addRow(self.cb_coach)
+
+        self.coach_opacity = QSpinBox()
+        self.coach_opacity.setRange(40, 100)
+        self.coach_opacity.setValue(cfg.coach_opacity)
+        self.coach_opacity.setSuffix(" %")
+        self.coach_opacity.valueChanged.connect(
+            lambda v: self._update("coach_opacity", v)
+        )
+        cf.addRow("Opacity", self.coach_opacity)
+
+        self.cb_auto = QCheckBox("Auto-answer when a question is asked")
+        self.cb_auto.setChecked(cfg.auto_answer_questions)
+        self.cb_auto.toggled.connect(
+            lambda v: self._update("auto_answer_questions", v)
+        )
+        cf.addRow(self.cb_auto)
+        lay.addWidget(coach_card)
+
         # ---- AI card ---- #
         ai_card = QFrame()
         ai_card.setProperty("class", "Card")
@@ -459,7 +633,7 @@ class SettingsPage(QWidget):
         af.addRow("HUD time-to-live", self.analysis_ttl)
 
         self.default_mode = QComboBox()
-        self.default_mode.addItems(["HUD", "Summary", "Action items", "Questions"])
+        self.default_mode.addItems(ALL_MODES)
         self.default_mode.setCurrentText(cfg.analysis_mode)
         self.default_mode.currentTextChanged.connect(
             lambda v: self._update("analysis_mode", v)
@@ -488,6 +662,18 @@ class SettingsPage(QWidget):
             lambda: self._update("toggle_overlay_hotkey", self.k_tog.text())
         )
         hf.addRow("Toggle overlay", self.k_tog)
+
+        self.k_spot = QLineEdit(cfg.spotlight_hotkey)
+        self.k_spot.editingFinished.connect(
+            lambda: self._update("spotlight_hotkey", self.k_spot.text())
+        )
+        hf.addRow("Spotlight", self.k_spot)
+
+        self.k_stealth = QLineEdit(cfg.stealth_hotkey)
+        self.k_stealth.editingFinished.connect(
+            lambda: self._update("stealth_hotkey", self.k_stealth.text())
+        )
+        hf.addRow("Stealth (hide all)", self.k_stealth)
 
         self.k_q = QLineEdit(cfg.quit_hotkey)
         self.k_q.editingFinished.connect(
@@ -610,19 +796,22 @@ class Dashboard(QMainWindow):
 
         self.stack = QStackedWidget()
         self.live_page = LivePage()
+        self.context_page = ContextPage()
         self.insights_page = InsightsPage()
         self.settings_page = SettingsPage()
         self.about_page = AboutPage()
         self.stack.addWidget(self.live_page)
+        self.stack.addWidget(self.context_page)
         self.stack.addWidget(self.insights_page)
         self.stack.addWidget(self.settings_page)
         self.stack.addWidget(self.about_page)
 
         nav_items: list[tuple[str, int]] = [
             ("◐  Live", 0),
-            ("✦  Insights", 1),
-            ("⚙  Settings", 2),
-            ("ⓘ  About", 3),
+            ("◆  Context", 1),
+            ("✦  Insights", 2),
+            ("⚙  Settings", 3),
+            ("ⓘ  About", 4),
         ]
         self._nav_buttons: list[QPushButton] = []
         for label, idx in nav_items:

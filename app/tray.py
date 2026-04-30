@@ -27,11 +27,21 @@ def install(app: QApplication, dashboard: Dashboard) -> QSystemTrayIcon | None:
 
     menu.addSeparator()
 
-    analyse_act = QAction("Analyse now", menu)
+    answer_act = QAction("Answer this", menu)
+    answer_act.triggered.connect(lambda: trigger_analysis("Answer"))
+    menu.addAction(answer_act)
+
+    spot_act = QAction("Spotlight…", menu)
+    spot_act.triggered.connect(bus.spotlight_requested.emit)
+    menu.addAction(spot_act)
+
+    analyse_act = QAction("Run default analysis", menu)
     analyse_act.triggered.connect(lambda: trigger_analysis())
     menu.addAction(analyse_act)
 
-    toggle_act = QAction("Toggle overlay", menu, checkable=True)
+    menu.addSeparator()
+
+    toggle_act = QAction("Show captions overlay", menu, checkable=True)
     toggle_act.setChecked(settings().overlay_enabled)
 
     def _on_toggle(checked: bool) -> None:
@@ -43,6 +53,23 @@ def install(app: QApplication, dashboard: Dashboard) -> QSystemTrayIcon | None:
     toggle_act.toggled.connect(_on_toggle)
     bus.overlay_visibility_changed.connect(toggle_act.setChecked)
     menu.addAction(toggle_act)
+
+    coach_act = QAction("Show Coach panel", menu, checkable=True)
+    coach_act.setChecked(settings().coach_enabled)
+
+    def _on_coach(checked: bool) -> None:
+        cfg = settings()
+        cfg.coach_enabled = checked
+        cfg.save()
+        bus.coach_visibility_changed.emit(checked)
+
+    coach_act.toggled.connect(_on_coach)
+    bus.coach_visibility_changed.connect(coach_act.setChecked)
+    menu.addAction(coach_act)
+
+    stealth_act = QAction("Stealth — hide everything", menu)
+    stealth_act.triggered.connect(bus.stealth_toggle_requested.emit)
+    menu.addAction(stealth_act)
 
     menu.addSeparator()
 

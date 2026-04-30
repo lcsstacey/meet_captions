@@ -38,6 +38,17 @@ class Bus(QObject):
     analysis_completed = pyqtSignal(object)  # AnalysisEvent
     status_changed = pyqtSignal(str, str)    # level (info|warn|error), message
 
+    # Coach panel (interactive movable suggestion panel).
+    coach_update = pyqtSignal(str, str)      # (mode, markdown_text)
+    coach_busy = pyqtSignal(bool, str)       # (busy, label)
+    coach_visibility_changed = pyqtSignal(bool)
+
+    # Spotlight quick-prompt dialog.
+    spotlight_requested = pyqtSignal()
+
+    # Stealth: hide/show every Lumen surface at once.
+    stealth_toggle_requested = pyqtSignal()
+
     # Lifecycle.
     quit_requested = pyqtSignal()
     overlay_visibility_changed = pyqtSignal(bool)

@@ -43,18 +43,35 @@ class Settings:
     # AI
     gemini_model: str = "gemini-2.5-flash"
     analysis_ttl_seconds: int = 30
-    analysis_mode: str = "HUD"      # HUD | Summary | Action items | Questions
+    analysis_mode: str = "Answer"   # see ai.MODES for valid values
     max_transcript_chars: int = 16_000
+    auto_answer_questions: bool = False  # auto-fire Answer when "?" detected
+    last_caption_window: int = 600       # chars used as the "current question"
+
+    # Personalisation — folded into every prompt.
+    resume_text: str = ""
+    role_text: str = ""
+    notes_text: str = ""
 
     # Behaviour
     analysis_hotkey: str = "0"
     quit_hotkey: str = "ctrl+shift+q"
     toggle_overlay_hotkey: str = "ctrl+shift+o"
+    spotlight_hotkey: str = "ctrl+shift+space"
+    stealth_hotkey: str = "ctrl+shift+h"
     flask_host: str = "127.0.0.1"
     flask_port: int = 5000
     overlay_enabled: bool = True
     autostart_overlay: bool = True
     minimise_to_tray: bool = True
+
+    # Coach panel — interactive, movable, persistent.
+    coach_enabled: bool = True
+    coach_x: int = 60
+    coach_y: int = 60
+    coach_w: int = 520
+    coach_h: int = 360
+    coach_opacity: int = 92  # 0–100
 
     @classmethod
     def load(cls) -> "Settings":

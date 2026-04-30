@@ -17,16 +17,11 @@ except ImportError:  # pragma: no cover
     keyboard = None  # type: ignore[assignment]
 
 
-_overlay_visible = True
-
-
 def _toggle_overlay() -> None:
-    global _overlay_visible
     cfg = settings()
-    _overlay_visible = not _overlay_visible
-    cfg.overlay_enabled = _overlay_visible
+    cfg.overlay_enabled = not cfg.overlay_enabled
     cfg.save()
-    bus.overlay_visibility_changed.emit(_overlay_visible)
+    bus.overlay_visibility_changed.emit(cfg.overlay_enabled)
 
 
 def setup() -> None:
@@ -35,23 +30,26 @@ def setup() -> None:
         return
 
     cfg = settings()
-    try:
-        keyboard.add_hotkey(
-            cfg.analysis_hotkey,
-            lambda: threading.Thread(
-                target=trigger_analysis, daemon=True
-            ).start(),
-        )
-        keyboard.add_hotkey(cfg.toggle_overlay_hotkey, _toggle_overlay)
-        keyboard.add_hotkey(cfg.quit_hotkey, bus.quit_requested.emit)
-        log.info(
-            "Hotkeys: %s = analyse, %s = toggle overlay, %s = quit",
-            cfg.analysis_hotkey,
-            cfg.toggle_overlay_hotkey,
-            cfg.quit_hotkey,
-        )
-    except Exception:  # noqa: BLE001 — registration may need elevated perms.
-        log.exception(
-            "Could not register global hotkeys "
-            "(on macOS/Linux you may need to run with sudo)."
-        )
+    bindings = [
+        (cfg.analysis_hotkey, lambda: threading.Thread(
+            target=trigger_analysis, daemon=True
+        ).start(), "analyse"),
+        (cfg.toggle_overlay_hotkey, _toggle_overlay, "toggle overlay"),
+        (cfg.spotlight_hotkey, bus.spotlight_requested.emit, "spotlight"),
+        (cfg.stealth_hotkey, bus.stealth_toggle_requested.emit, "stealth"),
+        (cfg.quit_hotkey, bus.quit_requested.emit, "quit"),
+    ]
+    registered = []
+    for hk, fn, label in bindings:
+        if not hk:
+            continue
+        try:
+            keyboard.add_hotkey(hk, fn)
+            registered.append(f"{hk}={label}")
+        except Exception:  # noqa: BLE001 — registration may need elevated perms.
+            log.exception("Could not register hotkey %r", hk)
+
+    if registered:
+        log.info("Hotkeys: %s", ", ".join(registered))
+    else:
+        log.warning("No global hotkeys registered.")
